@@ -1,0 +1,9 @@
+fastapi==0.115.5
+uvicorn==0.32.0
+pandas==2.1.2
+python-multipart==0.0.19
+openpyxl==3.1.4
+faker==35.2.1
+tqdm==4.66.6
+numpy==1.26.4
+xlsx2csv

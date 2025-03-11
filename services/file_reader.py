@@ -49,7 +49,6 @@ class FileReader:
         output.seek(0)
         df = pd.read_csv(output)
 
-        print(df['test1'])
         elapsed_time = time.time() - start_time
         logger.info(f"Thời gian đọc file Excel (dùng xlsx2csv): {elapsed_time:.3f} giây")
         

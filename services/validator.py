@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import Dict, Any, List, Optional
 from fastapi import HTTPException
 from collections import defaultdict
-from schemas.response import ValidationResponse
+from schemas.validation_response import ValidationResponse
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,9 @@ class Validator:
     def __init__(self, validation_rules: Dict[str, Dict[str, Any]]) -> None:
         self.validation_rules = validation_rules
 
-    def validate(self, df: pd.DataFrame, id: str) -> Optional[ValidationResponse]:
+    def validate(self,
+                 df: pd.DataFrame,
+                 id: str) -> Optional[ValidationResponse]:
         """Xác thực dữ liệu DataFrame theo quy tắc của ID."""
         start_time = time.time()
 
@@ -36,29 +38,29 @@ class Validator:
 
         errors = defaultdict(list)
         for col, expected_type in column_types.items():
-            if col in df.columns:
-                invalid_rows = []
-                if expected_type == int:
-                    numeric_series = pd.to_numeric(df[col], errors="coerce")
-                    invalid_rows = df.index[numeric_series.isna()].tolist()
-                    df[col] = numeric_series
-                elif expected_type == float:
-                    numeric_series = pd.to_numeric(df[col], errors="coerce")
-                    invalid_rows = df.index[numeric_series.isna()].tolist()
-                    df[col] = numeric_series
-                elif expected_type == pd.Timestamp or expected_type == "datetime":
-                    datetime_series = pd.to_datetime(df[col], errors="coerce")
-                    invalid_rows = df.index[datetime_series.isna()].tolist()
-                    df[col] = datetime_series
-                elif expected_type == str:
-                    invalid_rows = df.index[~df[col].apply(lambda x: isinstance(x, str))].tolist()
-                else:
-                    invalid_rows = df.index[~df[col].apply(lambda x: isinstance(x, expected_type))].tolist()
-                if invalid_rows:
-                    for irow in tqdm(invalid_rows):
-                        errors[irow].append(col)
+            if col not in df.columns:
+                continue
+
+            invalid_rows = []
+            if expected_type in {int, float}:
+                numeric_series = pd.to_numeric(df[col], errors="coerce")
+                invalid_rows = df.index[numeric_series.isna()].tolist()
+                df[col] = numeric_series
+            elif expected_type in {pd.Timestamp, "datetime"}:
+                datetime_series = pd.to_datetime(df[col], errors="coerce")
+                invalid_rows = df.index[datetime_series.isna()].tolist()
+                df[col] = datetime_series
+            elif expected_type == str:
+                invalid_rows = df.index[~df[col].apply(lambda x: isinstance(x, str))].tolist()
+            else:
+                invalid_rows = df.index[~df[col].apply(lambda x: isinstance(x, expected_type))].tolist()
+            
+            if invalid_rows:
+                for irow in tqdm(invalid_rows):
+                    errors[irow].append(col)
 
         elapsed_time = time.time() - start_time
         logger.info(f"Validation completed in {elapsed_time:.3f} seconds for id {id}")
-        return ValidationResponse(errors=errors)
-
+        if errors == {}:
+            return ValidationResponse(errors=errors, data=df.to_dict(orient="records"))
+        return ValidationResponse(errors=errors, data=[])

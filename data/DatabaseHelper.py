@@ -38,6 +38,49 @@ class DatabaseHelper:
         except Exception as e:
             return f"Error acquiring connection: {str(e)}"
     
+
+    def get_procedure_param_types(self, procedure_name: str) -> List[Tuple[int, str, str]]:
+
+        """ Lấy danh sách (thứ tự, tên tham số, kiểu dữ liệu) của stored procedure """
+
+        query = """
+        SELECT t.typname AS param_type
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        JOIN LATERAL unnest(proargnames, proargtypes::oid[]) 
+            WITH ORDINALITY AS param(param_name, type_oid, ordinality) 
+            ON true
+        JOIN pg_type t ON param.type_oid = t.oid
+        WHERE p.proname = %s
+        ORDER BY param.ordinality;
+        """
+        try:
+            with self.conn.cursor() as cursor:
+                cursor.execute(query, (procedure_name,))
+                result = [i[0] for i in cursor.fetchall()]
+                print(result)
+                return result
+        except Exception as e:
+            return []
+
+    # def execute_scalar_s_procedure_x(self, sprocedure_name: str, *params: Any) -> Tuple[Any, str]:
+    #     """ Gọi stored procedure mà không cần chỉ định kiểu dữ liệu trước """
+    #     if not self.conn:
+    #         self.open_connection()
+        
+    #     expected_types = self.get_procedure_param_types(sprocedure_name)
+    #     if not expected_types:
+    #         return None, f"Không lấy được kiểu dữ liệu của {sprocedure_name}"
+        
+    #     try:
+    #         with self.conn.cursor() as cursor:
+    #             cursor.execute(f"SELECT {sprocedure_name}({', '.join([f'%s::{param_type}' for param_type in expected_types])})", params)
+    #             self.conn.commit()
+    #             result = cursor.fetchone()
+    #         return (result[0] if result else None, "")
+    #     except Exception as e:
+    #         return None, f"Lỗi khi gọi stored procedure: {str(e)}"
+
     def close_connection(self) -> str:
         """Trả kết nối về pool nếu dùng pool, hoặc đóng kết nối nếu không"""
         if self.conn:
@@ -77,41 +120,48 @@ class DatabaseHelper:
         except Exception as e:
             return None, f"Error executing scalar query: {str(e)}"
 
-    def execute_s_procedure(self, sprocedure_name: str, *params: Any, expected_types: Any) -> str:
+    def execute_s_procedure(self, sprocedure_name: str, *params: Any) -> str:
         """ Gọi stored procedure không trả về dữ liệu """
         if not self.conn:
             self.open_connection()
+        
+        expected_types = self.get_procedure_param_types(sprocedure_name)
+        if not expected_types:
+            return None, f"Không lấy được kiểu dữ liệu của {sprocedure_name}"
         try:
             with self.conn.cursor() as cursor:
-                cursor.execute(f"SELECT {sprocedure_name}({', '.join([f'%s::{param_type}' for param_type in expected_types])})", params)
-                # cursor.execute(f"CALL {sprocedure_name}({', '.join(['%s'] * len(params))})", params)
+                cursor.execute(f"SELECT {sprocedure_name}({', '.join([f'%s::{expected_types[i]}' for i in range(len(params))])})", params)
                 self.conn.commit()
             return "Stored procedure executed successfully."
         except Exception as e:
             return f"Error executing stored procedure: {str(e)}"
 
-    def execute_scalar_s_procedure(self, sprocedure_name: str, *params: Any, expected_types: Any) -> Tuple[Any, str]:
+    def execute_scalar_s_procedure(self, sprocedure_name: str, *params: Any) -> Tuple[Any, str]:
         """ Gọi stored procedure trả về một giá trị duy nhất """
         if not self.conn:
             self.open_connection()
+        expected_types = self.get_procedure_param_types(sprocedure_name)
+        if not expected_types:
+            return None, f"Không lấy được kiểu dữ liệu của {sprocedure_name}"
         try:
             with self.conn.cursor() as cursor:
-                cursor.execute(f"SELECT {sprocedure_name}({', '.join([f'%s::{param_type}' for param_type in expected_types])})", params)
-                # print((f"SELECT {sprocedure_name}({', '.join(['%s'] * len(params))})", params))
-                # cursor.execute(f"SELECT {sprocedure_name}({', '.join(['%s'] * len(params))})", params)
+                cursor.execute(f"SELECT {sprocedure_name}({', '.join([f'%s::{expected_types[i]}' for i in range(len(params))])})", params)
                 self.conn.commit()
                 result = cursor.fetchone()
             return (result[0] if result else None, "")
         except Exception as e:
             return None, f"Error executing scalar stored procedure: {str(e)}"
 
-    def execute_s_procedure_return_data_table(self, func_name: str, *params: Any, expected_types: Any) -> Tuple[List[dict], str]:
+    def execute_s_procedure_return_data_table(self, sprocedure_name: str, *params: Any) -> Tuple[List[dict], str]:
         """ Gọi stored procedure trả về bảng dữ liệu """
         if not self.conn:
             self.open_connection()
+        expected_types = self.get_procedure_param_types(sprocedure_name)
+        if not expected_types:
+            return None, f"Không lấy được kiểu dữ liệu của {sprocedure_name}"
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute(f"SELECT * FROM {func_name}({', '.join([f'%s::{param_type}' for param_type in expected_types])})", params)
+                cursor.execute(f"SELECT * FROM {sprocedure_name}({', '.join([f'%s::{expected_types[i]}' for i in range(len(params))])})", params)
                 self.conn.commit()
                 return cursor.fetchall(), ""
         except Exception as e:

@@ -8,3 +8,5 @@ tqdm==4.66.6
 numpy
 xlsx2csv
 psycopg2
+psycopg[binary]
+psycopg-pool
